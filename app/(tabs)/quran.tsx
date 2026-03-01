@@ -18,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { QuranListSkeleton } from '@/components/Skeleton';
 import { useTheme } from '@/context/ThemeContext';
 import { fetchSurahList, type Surah } from '@/services/quran';
+import { VocabularyScreen } from '@/app/quran/vocabulary';
 
 // Approximate height of each SurahRow: paddingVertical*2 (24) + content (~56) + marginBottom (8)
 const SURAH_ROW_H = 88;
@@ -26,7 +27,67 @@ const SURAH_ROW_H = 88;
 
 const LAST_READ_KEY = 'salah_last_read_v1';
 
-type LastRead = { surah: number; ayah: number } | null;
+type LastRead   = { surah: number; ayah: number } | null;
+type ActiveTab  = 'surahs' | 'vocab';
+
+// ─── Tab toggle ───────────────────────────────────────────────────────────────
+
+function TabToggle({
+  active,
+  onSwitch,
+}: {
+  active:   ActiveTab;
+  onSwitch: (tab: ActiveTab) => void;
+}) {
+  const { colors, palette } = useTheme();
+  const pillAnim = useRef(new Animated.Value(active === 'surahs' ? 0 : 1)).current;
+
+  function handleSwitch(tab: ActiveTab) {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Animated.spring(pillAnim, {
+      toValue:         tab === 'surahs' ? 0 : 1,
+      useNativeDriver: false,
+      tension:         200,
+      friction:        22,
+    }).start();
+    onSwitch(tab);
+  }
+
+  // The pill slides from left (Surahs) to right (Vocabulary)
+  // Container width ≈ half of each side
+  const pillLeft = pillAnim.interpolate({
+    inputRange:  [0, 1],
+    outputRange: ['2%', '51%'],
+  });
+
+  return (
+    <View style={[styles.toggleWrap, { backgroundColor: colors.cardAlt, borderColor: colors.border }]}>
+      {/* Sliding gold pill */}
+      <Animated.View
+        style={[styles.togglePill, { backgroundColor: palette.gold, left: pillLeft }]}
+        pointerEvents="none"
+      />
+      <TouchableOpacity
+        style={styles.toggleBtn}
+        onPress={() => handleSwitch('surahs')}
+        activeOpacity={0.8}
+      >
+        <Text style={[styles.toggleLabel, { color: active === 'surahs' ? palette.onGold : colors.textMuted }]}>
+          Surahs
+        </Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={styles.toggleBtn}
+        onPress={() => handleSwitch('vocab')}
+        activeOpacity={0.8}
+      >
+        <Text style={[styles.toggleLabel, { color: active === 'vocab' ? palette.onGold : colors.textMuted }]}>
+          Vocabulary
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
 
 // ─── Surah row ────────────────────────────────────────────────────────────────
 
@@ -35,29 +96,18 @@ function SurahRow({
   isLastRead,
   onPress,
 }: {
-  surah:       Surah;
-  isLastRead:  boolean;
-  onPress:     () => void;
+  surah:      Surah;
+  isLastRead: boolean;
+  onPress:    () => void;
 }) {
   const { colors, palette } = useTheme();
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   function onPressIn() {
-    Animated.spring(scaleAnim, {
-      toValue:         0.97,
-      useNativeDriver: true,
-      tension:         300,
-      friction:        20,
-    }).start();
+    Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: true, tension: 300, friction: 20 }).start();
   }
-
   function onPressOut() {
-    Animated.spring(scaleAnim, {
-      toValue:         1,
-      useNativeDriver: true,
-      tension:         300,
-      friction:        20,
-    }).start();
+    Animated.spring(scaleAnim, { toValue: 1,    useNativeDriver: true, tension: 300, friction: 20 }).start();
   }
 
   const a11yLabel = `Surah ${surah.englishName}, ${surah.englishNameTranslation}, ${surah.numberOfAyahs} verses${isLastRead ? ', currently reading' : ''}`;
@@ -80,74 +130,26 @@ function SurahRow({
         accessibilityRole="button"
         accessibilityLabel={a11yLabel}
       >
-        {/* Gold left accent when it's the last-read surah */}
         {isLastRead && (
           <View style={[styles.readAccent, { backgroundColor: palette.gold }]} />
         )}
 
-        {/* Number badge */}
-        <View
-          style={[
-            styles.badge,
-            {
-              backgroundColor: isLastRead
-                ? 'rgba(200,169,110,0.15)'
-                : colors.cardAlt,
-            },
-          ]}
-        >
-          <Text
-            style={[
-              styles.badgeNum,
-              {
-                color:      isLastRead ? palette.gold : colors.textMuted,
-                fontFamily: 'SpaceMono',
-              },
-            ]}
-          >
+        <View style={[styles.badge, { backgroundColor: isLastRead ? 'rgba(200,169,110,0.15)' : colors.cardAlt }]}>
+          <Text style={[styles.badgeNum, { color: isLastRead ? palette.gold : colors.textMuted, fontFamily: 'SpaceMono' }]}>
             {surah.number}
           </Text>
         </View>
 
-        {/* English name + meaning + meta */}
         <View style={styles.nameBlock}>
-          <Text
-            style={[
-              styles.engName,
-              { color: isLastRead ? palette.gold : colors.text },
-            ]}
-          >
+          <Text style={[styles.engName, { color: isLastRead ? palette.gold : colors.text }]}>
             {surah.englishName}
           </Text>
-          <Text
-            style={[styles.meaning, { color: colors.textMuted }]}
-            numberOfLines={1}
-          >
+          <Text style={[styles.meaning, { color: colors.textMuted }]} numberOfLines={1}>
             {surah.englishNameTranslation}
           </Text>
           <View style={styles.meta}>
-            <View
-              style={[
-                styles.revBadge,
-                {
-                  backgroundColor:
-                    surah.revelationType === 'Meccan'
-                      ? 'rgba(200,169,110,0.12)'
-                      : 'rgba(27,67,50,0.22)',
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.revText,
-                  {
-                    color:
-                      surah.revelationType === 'Meccan'
-                        ? palette.gold
-                        : palette.greenLight,
-                  },
-                ]}
-              >
+            <View style={[styles.revBadge, { backgroundColor: surah.revelationType === 'Meccan' ? 'rgba(200,169,110,0.12)' : 'rgba(27,67,50,0.22)' }]}>
+              <Text style={[styles.revText, { color: surah.revelationType === 'Meccan' ? palette.gold : palette.greenLight }]}>
                 {surah.revelationType}
               </Text>
             </View>
@@ -157,35 +159,18 @@ function SurahRow({
           </View>
         </View>
 
-        {/* Arabic name + continue-reading pill */}
         <View style={styles.rightBlock}>
-          <Text
-            style={[
-              styles.arabicName,
-              { color: isLastRead ? palette.gold : colors.text },
-            ]}
-          >
+          <Text style={[styles.arabicName, { color: isLastRead ? palette.gold : colors.text }]}>
             {surah.name}
           </Text>
           {isLastRead && (
-            <View
-              style={[
-                styles.continuePill,
-                { backgroundColor: 'rgba(200,169,110,0.12)' },
-              ]}
-            >
-              <Text style={[styles.continueText, { color: palette.gold }]}>
-                reading
-              </Text>
+            <View style={[styles.continuePill, { backgroundColor: 'rgba(200,169,110,0.12)' }]}>
+              <Text style={[styles.continueText, { color: palette.gold }]}>reading</Text>
             </View>
           )}
         </View>
 
-        <Ionicons
-          name="chevron-forward"
-          size={14}
-          color={isLastRead ? palette.gold : colors.tabInactive}
-        />
+        <Ionicons name="chevron-forward" size={14} color={isLastRead ? palette.gold : colors.tabInactive} />
       </TouchableOpacity>
     </Animated.View>
   );
@@ -194,13 +179,17 @@ function SurahRow({
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function QuranScreen() {
-  const { colors, palette } = useTheme();
+  const { colors } = useTheme();
 
-  const [surahs,   setSurahs]   = useState<Surah[]>([]);
-  const [loading,  setLoading]  = useState(true);
-  const [error,    setError]    = useState<string | null>(null);
-  const [search,   setSearch]   = useState('');
-  const [lastRead, setLastRead] = useState<LastRead>(null);
+  const [activeTab, setActiveTab] = useState<ActiveTab>('surahs');
+  const [surahs,    setSurahs]    = useState<Surah[]>([]);
+  const [loading,   setLoading]   = useState(true);
+  const [error,     setError]     = useState<string | null>(null);
+  const [search,    setSearch]    = useState('');
+  const [lastRead,  setLastRead]  = useState<LastRead>(null);
+
+  // Fade animation when switching tabs
+  const fadeAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     AsyncStorage.getItem(LAST_READ_KEY)
@@ -213,6 +202,14 @@ export default function QuranScreen() {
       .finally(() => setLoading(false));
   }, []);
 
+  function handleTabSwitch(tab: ActiveTab) {
+    if (tab === activeTab) return;
+    Animated.timing(fadeAnim, { toValue: 0, duration: 100, useNativeDriver: true }).start(() => {
+      setActiveTab(tab);
+      Animated.timing(fadeAnim, { toValue: 1, duration: 150, useNativeDriver: true }).start();
+    });
+  }
+
   // ── Filter ─────────────────────────────────────────────────────────────────
 
   const q = search.trim().toLowerCase();
@@ -224,104 +221,99 @@ export default function QuranScreen() {
       )
     : surahs;
 
-  // ── Loading / Error ────────────────────────────────────────────────────────
-
-  if (loading) {
-    return (
-      <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={['top']}>
-        <View style={[styles.searchBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <MaterialCommunityIcons name="magnify" size={18} color={colors.textMuted} />
-          <View style={{ flex: 1, height: 14, borderRadius: 7, backgroundColor: colors.cardAlt }} />
-        </View>
-        <View style={styles.header}>
-          <View style={{ width: 140, height: 24, borderRadius: 8, backgroundColor: colors.cardAlt, marginBottom: 6 }} />
-          <View style={{ width: 70, height: 11, borderRadius: 6, backgroundColor: colors.cardAlt }} />
-        </View>
-        <QuranListSkeleton />
-      </SafeAreaView>
-    );
-  }
-
-  if (error) {
-    return (
-      <View style={[styles.center, { backgroundColor: colors.bg }]}>
-        <MaterialCommunityIcons name="alert-circle-outline" size={48} color={colors.textMuted} />
-        <Text style={[styles.centerText, { color: colors.textMuted }]}>{error}</Text>
-      </View>
-    );
-  }
-
-  // ── Main ──────────────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={['top']}>
 
-      {/* ── Search bar ── */}
-      <View
-        style={[
-          styles.searchBar,
-          { backgroundColor: colors.card, borderColor: colors.border },
-        ]}
-      >
-        <MaterialCommunityIcons name="magnify" size={18} color={colors.textMuted} />
-        <TextInput
-          style={[styles.searchInput, { color: colors.text }]}
-          placeholder="Search by name or number…"
-          placeholderTextColor={colors.tabInactive}
-          value={search}
-          onChangeText={setSearch}
-          returnKeyType="search"
-          clearButtonMode="while-editing"
-        />
-        {search.length > 0 && (
-          <TouchableOpacity
-            onPress={() => setSearch('')}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Ionicons name="close-circle" size={16} color={colors.tabInactive} />
-          </TouchableOpacity>
-        )}
-      </View>
+      {/* ── Surahs / Vocabulary toggle ── */}
+      <TabToggle active={activeTab} onSwitch={handleTabSwitch} />
 
-      {/* ── Header ── */}
-      <View style={styles.header}>
-        <Text style={[styles.headerArabic, { color: colors.text }]}>
-          القرآن الكريم
-        </Text>
-        <Text style={[styles.headerSub, { color: colors.textMuted }]}>
-          {filtered.length === surahs.length
-            ? '114 Surahs'
-            : `${filtered.length} of 114`}
-        </Text>
-      </View>
+      {/* ── Animated content area ── */}
+      <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
 
-      {/* ── Surah list ── */}
-      <FlatList
-        data={filtered}
-        keyExtractor={s => String(s.number)}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        // ── Performance ──────────────────────────────────────────────────
-        getItemLayout={(_data, index) => ({
-          length: SURAH_ROW_H,
-          offset: SURAH_ROW_H * index,
-          index,
-        })}
-        initialNumToRender={12}
-        maxToRenderPerBatch={10}
-        windowSize={10}
-        removeClippedSubviews={Platform.OS === 'android'}
-        renderItem={({ item }) => (
-          <SurahRow
-            surah={item}
-            isLastRead={lastRead?.surah === item.number}
-            onPress={() =>
-              router.push({ pathname: '/quran/[surah]', params: { surah: item.number } })
-            }
-          />
+        {/* ── Vocabulary tab ── */}
+        {activeTab === 'vocab' ? (
+          <VocabularyScreen />
+
+        /* ── Surahs tab: loading state ── */
+        ) : loading ? (
+          <>
+            <View style={[styles.searchBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <MaterialCommunityIcons name="magnify" size={18} color={colors.textMuted} />
+              <View style={{ flex: 1, height: 14, borderRadius: 7, backgroundColor: colors.cardAlt }} />
+            </View>
+            <View style={styles.header}>
+              <View style={{ width: 140, height: 24, borderRadius: 8, backgroundColor: colors.cardAlt, marginBottom: 6 }} />
+              <View style={{ width: 70, height: 11, borderRadius: 6, backgroundColor: colors.cardAlt }} />
+            </View>
+            <QuranListSkeleton />
+          </>
+
+        /* ── Surahs tab: error state ── */
+        ) : error ? (
+          <View style={styles.center}>
+            <MaterialCommunityIcons name="alert-circle-outline" size={48} color={colors.textMuted} />
+            <Text style={[styles.centerText, { color: colors.textMuted }]}>{error}</Text>
+          </View>
+
+        /* ── Surahs tab: main list ── */
+        ) : (
+          <>
+            {/* Search bar */}
+            <View style={[styles.searchBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <MaterialCommunityIcons name="magnify" size={18} color={colors.textMuted} />
+              <TextInput
+                style={[styles.searchInput, { color: colors.text }]}
+                placeholder="Search by name or number…"
+                placeholderTextColor={colors.tabInactive}
+                value={search}
+                onChangeText={setSearch}
+                returnKeyType="search"
+                clearButtonMode="while-editing"
+              />
+              {search.length > 0 && (
+                <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close-circle" size={16} color={colors.tabInactive} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Header */}
+            <View style={styles.header}>
+              <Text style={[styles.headerArabic, { color: colors.text }]}>القرآن الكريم</Text>
+              <Text style={[styles.headerSub, { color: colors.textMuted }]}>
+                {filtered.length === surahs.length ? '114 Surahs' : `${filtered.length} of 114`}
+              </Text>
+            </View>
+
+            {/* Surah list */}
+            <FlatList
+              data={filtered}
+              keyExtractor={s => String(s.number)}
+              contentContainerStyle={styles.listContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              getItemLayout={(_data, index) => ({
+                length: SURAH_ROW_H,
+                offset: SURAH_ROW_H * index,
+                index,
+              })}
+              initialNumToRender={12}
+              maxToRenderPerBatch={10}
+              windowSize={10}
+              removeClippedSubviews={Platform.OS === 'android'}
+              renderItem={({ item }) => (
+                <SurahRow
+                  surah={item}
+                  isLastRead={lastRead?.surah === item.number}
+                  onPress={() => router.push({ pathname: '/quran/[surah]', params: { surah: item.number } })}
+                />
+              )}
+            />
+          </>
         )}
-      />
+      </Animated.View>
     </SafeAreaView>
   );
 }
@@ -333,13 +325,45 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },
   centerText: { marginTop: 14, fontSize: 13, letterSpacing: 0.3, textAlign: 'center' },
 
+  // ── Tab toggle ─────────────────────────────────────────────────────────────
+  toggleWrap: {
+    flexDirection:     'row',
+    marginHorizontal:  16,
+    marginTop:         10,
+    marginBottom:      10,
+    borderRadius:      11,
+    borderWidth:       1,
+    padding:           2,
+    position:          'relative',
+    overflow:          'hidden',
+  },
+  togglePill: {
+    position:     'absolute',
+    top:          2,
+    bottom:       2,
+    width:        '48%',
+    borderRadius: 9,
+  },
+  toggleBtn: {
+    flex:           1,
+    alignItems:     'center',
+    justifyContent: 'center',
+    paddingVertical: 7,
+    zIndex:         1,
+  },
+  toggleLabel: {
+    fontSize:      13,
+    fontWeight:    '500',
+    letterSpacing: 0.3,
+  },
+
   // Search
   searchBar: {
     flexDirection:     'row',
     alignItems:        'center',
     gap:               10,
     marginHorizontal:  16,
-    marginTop:         12,
+    marginTop:         4,
     marginBottom:      8,
     paddingHorizontal: 14,
     paddingVertical:   10,
@@ -367,7 +391,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     overflow:          'hidden',
     position:          'relative',
-    gap:               0,
   },
   readAccent: {
     position: 'absolute',
