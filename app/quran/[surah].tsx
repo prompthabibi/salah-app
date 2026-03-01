@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import AudioPlayer from '@/components/AudioPlayer';
+import AudioPlayer, { type AudioPlayerRef } from '@/components/AudioPlayer';
 import AyahCard from '@/components/AyahCard';
 import { useTheme } from '@/context/ThemeContext';
 import {
@@ -32,11 +32,12 @@ import {
 // Provides O(1) scroll-to-index at the cost of slight inaccuracy on long verses.
 const ESTIMATED_ITEM_HEIGHT = 260;
 
-// Height of the AudioPlayer bar (progress track 3 + body ~74 + bottom inset).
+// Height of the AudioPlayer bar (progress section ~36 + body ~54 + bottom inset).
 // The list adds extra paddingBottom to clear the floating bar.
-const PLAYER_BAR_BODY_HEIGHT = 80;
+const PLAYER_BAR_BODY_HEIGHT = 90;
 
-const LAST_READ_KEY = 'salah_last_read_v1';
+const LAST_READ_KEY  = 'salah_last_read_v1';
+const HINT_SHOWN_KEY = 'salah_quran_hint_v1';
 
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
 
@@ -256,9 +257,12 @@ export default function SurahDetailScreen() {
   const [jumpText,    setJumpText]    = useState('');
 
   // Currently playing ayah index (0-based), null when stopped
-  const [playingIdx,  setPlayingIdx]  = useState<number | null>(null);
+  const [playingIdx,      setPlayingIdx]      = useState<number | null>(null);
+  // Whether the one-time "tap to play" hint has been dismissed
+  const [hintDismissed,   setHintDismissed]   = useState(false);
 
   const listRef        = useRef<FlatList<AyahItem>>(null);
+  const audioPlayerRef = useRef<AudioPlayerRef>(null);
   const hasRestoredRef = useRef(false);
 
   // ── Build merged ayah list using service helper ───────────────────────────
@@ -276,6 +280,14 @@ export default function SurahDetailScreen() {
       .catch(() => setError('Could not load surah — check your connection.'))
       .finally(() => setLoading(false));
   }, [surahNum]);
+
+  // ── Load hint-dismissed flag from storage ─────────────────────────────────
+
+  useEffect(() => {
+    AsyncStorage.getItem(HINT_SHOWN_KEY)
+      .then(v => { if (v === '1') setHintDismissed(true); })
+      .catch(() => {});
+  }, []);
 
   // ── Restore last-read position once data arrives ──────────────────────────
 
@@ -323,6 +335,14 @@ export default function SurahDetailScreen() {
   const handleAyahChange = useCallback((idx: number | null) => {
     setPlayingIdx(idx);
   }, []);
+
+  // ── Dismiss the first-use hint ─────────────────────────────────────────────
+
+  function dismissHint() {
+    if (hintDismissed) return;
+    setHintDismissed(true);
+    AsyncStorage.setItem(HINT_SHOWN_KEY, '1').catch(() => {});
+  }
 
   // ── Jump to ayah ──────────────────────────────────────────────────────────
 
@@ -426,6 +446,11 @@ export default function SurahDetailScreen() {
               english={item.english}
               isPlaying={playingIdx === index}
               isLast={index === ayahs.length - 1}
+              onPress={() => {
+                dismissHint();
+                audioPlayerRef.current?.playAyah(index);
+              }}
+              showHint={index === 0 && !hintDismissed}
             />
           )}
         />
@@ -434,6 +459,7 @@ export default function SurahDetailScreen() {
       {/* ── Floating audio player (shown whenever data is loaded) ── */}
       {!loading && !error && ayahs.length > 0 && (
         <AudioPlayer
+          ref={audioPlayerRef}
           ayahs={ayahs}
           onAyahChange={handleAyahChange}
         />
